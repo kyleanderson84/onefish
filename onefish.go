@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 )
 
 type Client struct {
@@ -14,6 +15,7 @@ type Client struct {
 	username string
 	password string
 	token    string
+	useHTTP  bool
 }
 
 func NewClient(target, username, password string) *Client {
@@ -114,6 +116,7 @@ func (c *Client) createSession() error {
 }
 
 func (c *Client) Get(url string) (*http.Response, error) {
+	// Try HTTPS first
 	fullURL := fmt.Sprintf("https://%s%s", c.target, url)
 	
 	req, err := http.NewRequest("GET", fullURL, nil)
@@ -131,7 +134,30 @@ func (c *Client) Get(url string) (*http.Response, error) {
 	}
 
 	client := &http.Client{}
-	return client.Do(req)
+	resp, err := client.Do(req)
+	
+	// If we get a TLS handshake error and no credentials were provided, 
+	// try falling back to HTTP
+	if err != nil && c.username == "" && c.password == "" {
+		if strings.Contains(err.Error(), "tls: first record does not look like a TLS handshake") {
+			// Switch to HTTP
+			c.useHTTP = true
+			fullURL = fmt.Sprintf("http://%s%s", c.target, url)
+			
+			req, err = http.NewRequest("GET", fullURL, nil)
+			if err != nil {
+				return nil, err
+			}
+			
+			resp, err = client.Do(req)
+		}
+	}
+	
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
 }
 
 func main() {
