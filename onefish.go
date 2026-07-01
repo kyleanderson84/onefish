@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-//	"strings"
 )
 
 type Client struct {
@@ -26,6 +25,11 @@ func NewClient(target, username, password string) *Client {
 }
 
 func (c *Client) Authenticate() error {
+	// If no credentials provided, skip authentication
+	if c.username == "" && c.password == "" {
+		return nil
+	}
+
 	// Try basic auth first
 	if err := c.tryBasicAuth(); err == nil {
 		return nil
@@ -42,7 +46,10 @@ func (c *Client) tryBasicAuth() error {
 		return err
 	}
 
-	req.SetBasicAuth(c.username, c.password)
+	// Only set basic auth if credentials are provided
+	if c.username != "" && c.password != "" {
+		req.SetBasicAuth(c.username, c.password)
+	}
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -114,10 +121,13 @@ func (c *Client) Get(url string) (*http.Response, error) {
 		return nil, err
 	}
 
-	if c.token != "" {
-		req.Header.Set("X-Auth-Token", c.token)
-	} else {
-		req.SetBasicAuth(c.username, c.password)
+	// Only add auth headers if credentials are provided
+	if c.username != "" && c.password != "" {
+		if c.token != "" {
+			req.Header.Set("X-Auth-Token", c.token)
+		} else {
+			req.SetBasicAuth(c.username, c.password)
+		}
 	}
 
 	client := &http.Client{}
@@ -131,8 +141,8 @@ func main() {
 
 	flag.Parse()
 
-	if *target == "" || *username == "" || *password == "" {
-		fmt.Println("Usage: onefish -target <ip:port> -u <username> -p <password>")
+	if *target == "" {
+		fmt.Println("Usage: onefish -target <ip:port> [-u <username> -p <password>]")
 		return
 	}
 
