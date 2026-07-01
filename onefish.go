@@ -190,4 +190,13 @@ func main() {
 	defer resp.Body.Close()
 	
 	fmt.Printf("Status: %d\n", resp.StatusCode)
+	
+	// Print the response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("Failed to read response body: %v\n", err)
+		return
+	}
+	
+	fmt.Printf("Response:\n%s\n", string(body))
 }
