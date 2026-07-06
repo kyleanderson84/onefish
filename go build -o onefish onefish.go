@@ -1,4 +1,6 @@
 
-## License
+onefish -target <ip:port> [-u <username> -p <password>]
 
-MIT
+## Installation
+
+Build from source:
