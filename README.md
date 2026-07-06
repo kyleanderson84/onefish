@@ -11,3 +11,4 @@ OneFish is a Go-based tool for interacting with Redfish API endpoints, commonly 
 
 ## Usage
 
+Basic usage:
