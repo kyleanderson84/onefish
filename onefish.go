@@ -41,20 +41,58 @@ func (c *Client) Authenticate() error {
 	return c.createSession()
 }
 
-func (c *Client) tryBasicAuth() error {
-	url := fmt.Sprintf("https://%s/redfish/v1/", c.target)
-	req, err := http.NewRequest("GET", url, nil)
+func (c *Client) doRequest(method, url string, body io.Reader, headers map[string]string) (*http.Response, error) {
+	fullURL := fmt.Sprintf("https://%s%s", c.target, url)
+
+	req, err := http.NewRequest(method, fullURL, body)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	// Only set basic auth if credentials are provided
-	if c.username != "" && c.password != "" {
-		req.SetBasicAuth(c.username, c.password)
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
+
+	// If we get a TLS handshake error, the endpoint is probably plain HTTP.
+	// Fall back to HTTP.
+	if err != nil && strings.Contains(err.Error(), "tls: first record does not look like a TLS handshake") {
+		c.useHTTP = true
+		fullURL = fmt.Sprintf("http://%s%s", c.target, url)
+
+		req, err = http.NewRequest(method, fullURL, body)
+		if err != nil {
+			return nil, err
+		}
+
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+
+		resp, err = client.Do(req)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
+}
+
+func (c *Client) tryBasicAuth() error {
+	headers := map[string]string{}
+	if c.username != "" && c.password != "" {
+		req, err := http.NewRequest("GET", "http://example.com", nil)
+		if err != nil {
+			return err
+		}
+		req.SetBasicAuth(c.username, c.password)
+		headers["Authorization"] = req.Header.Get("Authorization")
+	}
+
+	resp, err := c.doRequest("GET", "/redfish/v1/", nil, headers)
 	if err != nil {
 		return err
 	}
@@ -68,8 +106,6 @@ func (c *Client) tryBasicAuth() error {
 }
 
 func (c *Client) createSession() error {
-	url := fmt.Sprintf("https://%s/redfish/v1/SessionService/Sessions", c.target)
-
 	sessionData := map[string]string{
 		"UserName": c.username,
 		"Password": c.password,
@@ -80,15 +116,7 @@ func (c *Client) createSession() error {
 		return err
 	}
 
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := c.doRequest("POST", "/redfish/v1/SessionService/Sessions", bytes.NewBuffer(jsonData), map[string]string{"Content-Type": "application/json"})
 	if err != nil {
 		return err
 	}
@@ -116,48 +144,21 @@ func (c *Client) createSession() error {
 }
 
 func (c *Client) Get(url string) (*http.Response, error) {
-	// Try HTTPS first
-	fullURL := fmt.Sprintf("https://%s%s", c.target, url)
-	
-	req, err := http.NewRequest("GET", fullURL, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	// Only add auth headers if credentials are provided
+	headers := map[string]string{}
 	if c.username != "" && c.password != "" {
 		if c.token != "" {
-			req.Header.Set("X-Auth-Token", c.token)
+			headers["X-Auth-Token"] = c.token
 		} else {
-			req.SetBasicAuth(c.username, c.password)
-		}
-	}
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	
-	// If we get a TLS handshake error and no credentials were provided, 
-	// try falling back to HTTP
-	if err != nil && c.username == "" && c.password == "" {
-		if strings.Contains(err.Error(), "tls: first record does not look like a TLS handshake") {
-			// Switch to HTTP
-			c.useHTTP = true
-			fullURL = fmt.Sprintf("http://%s%s", c.target, url)
-			
-			req, err = http.NewRequest("GET", fullURL, nil)
+			req, err := http.NewRequest("GET", "http://example.com", nil)
 			if err != nil {
 				return nil, err
 			}
-			
-			resp, err = client.Do(req)
+			req.SetBasicAuth(c.username, c.password)
+			headers["Authorization"] = req.Header.Get("Authorization")
 		}
 	}
-	
-	if err != nil {
-		return nil, err
-	}
 
-	return resp, nil
+	return c.doRequest("GET", url, nil, headers)
 }
 
 func main() {
