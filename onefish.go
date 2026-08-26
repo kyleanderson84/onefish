@@ -76,6 +76,14 @@ func NewClient(target, username, password string) *Client {
 
 func (c *Client) Authenticate() error {
 	if c.username == "" && c.password == "" {
+		resp, err := c.doRequest("GET", "/redfish/v1/", nil, nil)
+		if err != nil {
+			return fmt.Errorf("connection failed: %w", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == 401 || resp.StatusCode == 403 {
+			return fmt.Errorf("authentication required but no credentials provided (use -u and -p)")
+		}
 		return nil
 	}
 
