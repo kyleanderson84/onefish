@@ -7,3 +7,4 @@ onefish
 .env
 .env.*
 *.log
+CONVERSATION.md
