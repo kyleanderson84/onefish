@@ -5,6 +5,7 @@ OneFish is a Go-based tool for interacting with Redfish API endpoints, commonly 
 ## Features
 
 - Authentication support (basic auth and session-based with X-Auth-Token)
+- Auto-detects when BMC requires credentials and prompts for `-u`/`-p`
 - HTTP/HTTPS protocol handling with auto-detection
 - HTTP Keep-Alive connection pooling for fast repeated requests
 - `$expand` optimization to reduce request count on collections by ~95%
@@ -21,54 +22,68 @@ OneFish is a Go-based tool for interacting with Redfish API endpoints, commonly 
 go build -o onefish
 ```
 
+Requires Go 1.24+. No external dependencies.
+
 ## Usage
 
 ```bash
 ./onefish -target <ip:port> [-u <username> -p <password>]
 ```
 
+If the BMC requires authentication and no credentials are provided, OneFish will exit with:
+
+```
+Authentication required but no credentials provided (use -u and -p)
+```
+
 ### Interactive Mode
 
 ```bash
-./onefish -target localhost:8000 -i
+./onefish -target localhost:8000 -u admin -p password -i
 ```
 
 Navigate the full Redfish API tree with single-key menu inputs:
 
 ```
+============================================================
+Current: Root Service (#ServiceRoot.v1_16_1.ServiceRoot)
+Path: /redfish/v1/
+------------------------------------------------------------
   0) Back
-  1) #Sensor.ResetMetrics
-  A) Sensor Collection
-  B) Sensor Collection
+  1) #EventService.SubmitTestEvent
+  A) Event Subscriptions Collection
   V) View Raw JSON
   C) CLI Commands
   Q) Exit
 
-  ElectricalContext: Total
-  PhysicalContext: PowerSupply
-  ReadingType: EnergykWh
+  ServiceEnabled: true
+  Subscriptions: /redfish/v1/EventService/Subscriptions
 
 >
 ```
 
-- **0** - Go back to previous endpoint
-- **1-9** - Execute actions
-- **A-Z** - Navigate to child endpoints
-- **V** - View raw JSON in pager
-- **C** - View CLI commands for session history
-- **Q** - Exit
+**Menu keys:**
+
+| Key | Action |
+|-----|--------|
+| `0` | Go back to previous endpoint |
+| `1`-`9` | Execute actions |
+| `A`-`Z` | Navigate to child endpoints |
+| `V` | View raw JSON in pager |
+| `C` | View CLI commands for session history |
+| `Q` | Exit |
 
 ### API Crawler
 
 ```bash
-./onefish -target localhost:8000 --crawl
+./onefish -target localhost:8000 -u admin -p password --crawl
 ```
 
 Crawls all Redfish API endpoints and displays a hierarchical tree. Uses `$expand` on collections to minimize requests.
 
 ```bash
 # JSON output for programmatic use
-./onefish -target localhost:8000 --crawl --output json
+./onefish -target localhost:8000 -u admin -p password --crawl --output json
 ```
 
 ### Action Execution
@@ -76,21 +91,21 @@ Crawls all Redfish API endpoints and displays a hierarchical tree. Uses `$expand
 Execute Redfish actions directly from the command line:
 
 ```bash
-./onefish -target localhost:8000 \
+./onefish -target localhost:8000 -u admin -p password \
   --action /redfish/v1/Chassis/1U/Actions/Chassis.Reset \
   --data '{"ResetType": "GracefulShutdown"}'
 ```
 
 ### Rate Limiting
 
-Disabled by default. Enable if the BMC starts pushing back:
+Disabled by default. OpenBMC does not enforce a requests-per-second limit. Enable if the BMC starts pushing back:
 
 ```bash
 # 1 second delay between requests
-./onefish -target localhost:8000 --crawl --rate-limit 1s
+./onefish -target localhost:8000 -u admin -p password --crawl --rate-limit 1s
 
 # 100ms delay for faster local testing
-./onefish -target localhost:8000 --crawl --rate-limit 100ms
+./onefish -target localhost:8000 -u admin -p password --crawl --rate-limit 100ms
 ```
 
 ## Complete Options
