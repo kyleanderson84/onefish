@@ -1,6 +1,6 @@
 # OneFish
 
-OneFish is a Go-based tool for interacting with Redfish API endpoints, commonly used for managing BMC (Baseboard Management Controller) systems.
+OneFish is a Go-based tool for interacting with Redfish API endpoints, commonly used for managing openBMC (Baseboard Management Controller) systems.
 
 ## Features
 
