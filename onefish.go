@@ -1062,7 +1062,11 @@ func handleAction(session *InteractiveSession, actionTarget string, actionData m
 		executeAction(session, actionTarget, payload)
 	case "2":
 		cli := generateCLICommand(session, "", actionTarget, payload)
-		fmt.Printf("\n%s%s%s\n", ColorCyan, cli, ColorReset)
+		curl := generateCurlCommand(session, "", actionTarget, payload)
+		fmt.Printf("\n%sOneFish:%s\n", ColorCyan, ColorReset)
+		fmt.Printf("%s%s%s\n", ColorCyan, cli, ColorReset)
+		fmt.Printf("\n%sCurl:%s\n", ColorCyan, ColorReset)
+		fmt.Printf("%s%s%s\n", ColorCyan, curl, ColorReset)
 		promptEnter()
 	case "3":
 		return
@@ -1232,16 +1236,20 @@ func viewRawJSON(session *InteractiveSession, path string) {
 func showCLICommands(session *InteractiveSession) {
 	var commands []string
 
-	baseCmd := fmt.Sprintf("onefish -target %s", session.client.target)
-	if session.client.username != "" {
-		baseCmd += fmt.Sprintf(" -u %s", session.client.username)
+	scheme := "https"
+	if session.client.useHTTP {
+		scheme = "http"
 	}
+	baseURL := fmt.Sprintf("%s://%s", scheme, session.client.target)
 
 	commands = append(commands, "# OneFish CLI Commands")
 	commands = append(commands, "# ====================")
 	commands = append(commands, "")
 	commands = append(commands, "# Basic query")
-	commands = append(commands, baseCmd)
+	commands = append(commands, generateCLICommand(session, "/redfish/v1/", "", ""))
+	commands = append(commands, "")
+	commands = append(commands, "# Equivalent curl")
+	commands = append(commands, generateCurlCommand(session, "/redfish/v1/", "", ""))
 	commands = append(commands, "")
 
 	for i, path := range session.history {
@@ -1251,21 +1259,20 @@ func showCLICommands(session *InteractiveSession) {
 		}
 		commands = append(commands, fmt.Sprintf("# [%d] %s%s", i+1, truncatePath(path, 50), marker))
 		commands = append(commands, generateCLICommand(session, path, "", ""))
+		commands = append(commands, generateCurlCommand(session, path, "", ""))
 		commands = append(commands, "")
 
 		if node := session.cached[path]; node != nil {
 			for name, target := range node.Actions {
-				cmd := fmt.Sprintf("onefish -target %s", session.client.target)
-				if session.client.username != "" {
-					cmd += fmt.Sprintf(" -u %s", session.client.username)
-				}
-				cmd += fmt.Sprintf(" --action %s --data '{}'", target)
 				commands = append(commands, fmt.Sprintf("# Action: %s", name))
-				commands = append(commands, cmd)
+				commands = append(commands, generateCLICommand(session, path, target, "{}"))
+				commands = append(commands, generateCurlCommand(session, path, target, "{}"))
 				commands = append(commands, "")
 			}
 		}
 	}
+
+	_ = baseURL
 
 	tmpFile, err := os.CreateTemp("", "onefish-*.txt")
 	if err != nil {
@@ -1312,6 +1319,35 @@ func generateCLICommand(session *InteractiveSession, path string, action string,
 	if data != "" && data != "{}" {
 		cmd.WriteString(fmt.Sprintf(" --data '%s'", data))
 	}
+	return cmd.String()
+}
+
+func generateCurlCommand(session *InteractiveSession, path string, action string, data string) string {
+	scheme := "https"
+	if session.client.useHTTP {
+		scheme = "http"
+	}
+	url := fmt.Sprintf("%s://%s%s", scheme, session.client.target, path)
+
+	var cmd strings.Builder
+	cmd.WriteString("curl")
+	if session.client.insecure {
+		cmd.WriteString(" -k")
+	}
+	if session.client.username != "" {
+		cmd.WriteString(fmt.Sprintf(" -u %s:%s", session.client.username, session.client.password))
+	}
+	cmd.WriteString(fmt.Sprintf(" %s", url))
+
+	if action != "" {
+		cmd.WriteString(fmt.Sprintf(" -X POST -H 'Content-Type: application/json'"))
+		if data != "" && data != "{}" {
+			cmd.WriteString(fmt.Sprintf(" -d '%s'", data))
+		} else {
+			cmd.WriteString(" -d '{}'")
+		}
+	}
+
 	return cmd.String()
 }
 
