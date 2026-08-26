@@ -1,2 +1,9 @@
 .aider*
 schema.xml
+onefish
+*.exe
+*.test
+*.out
+.env
+.env.*
+*.log
