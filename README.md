@@ -6,6 +6,7 @@ OneFish is a Go-based tool for interacting with Redfish API endpoints, commonly 
 
 - Authentication support (basic auth and session-based with X-Auth-Token)
 - Auto-detects when BMC requires credentials and prompts for `-u`/`-p`
+- **TLS bypass** (`-k`) for self-signed BMC certificates
 - HTTP/HTTPS protocol handling with auto-detection
 - HTTP Keep-Alive connection pooling for fast repeated requests
 - `$expand` optimization to reduce request count on collections by ~95%
@@ -13,6 +14,7 @@ OneFish is a Go-based tool for interacting with Redfish API endpoints, commonly 
 - **Interactive Mode**: Menu-driven interface for exploring endpoints, executing actions, and viewing data
 - **Action Execution**: Run Redfish actions with guided parameter prompts and confirmation
 - **CLI Command Generation**: Generate copy-paste commands from interactive sessions for automation
+- **Credential Redaction** (`--hide-creds`): Hide usernames/passwords in CLI output for sharing
 - **JSON Data Display**: View endpoint data inline or in a pager
 - **Rate Limiting**: Optional, disabled by default (OpenBMC doesn't enforce it)
 
@@ -27,13 +29,21 @@ Requires Go 1.24+. No external dependencies.
 ## Usage
 
 ```bash
-./onefish -target <ip:port> [-u <username> -p <password>]
+./onefish -target <ip:port> [-u <username> -p <password>] [-k]
 ```
 
 If the BMC requires authentication and no credentials are provided, OneFish will exit with:
 
 ```
 Authentication required but no credentials provided (use -u and -p)
+```
+
+### Self-Signed Certificates
+
+BMCs almost universally use self-signed TLS certificates. Use `-k` to skip verification:
+
+```bash
+./onefish -target 192.168.1.100:443 -u admin -p password -k -i
 ```
 
 ### Interactive Mode
@@ -96,6 +106,16 @@ Execute Redfish actions directly from the command line:
   --data '{"ResetType": "GracefulShutdown"}'
 ```
 
+### Credential Redaction
+
+Use `--hide-creds` when generating CLI commands for sharing or recording:
+
+```bash
+./onefish -target localhost:8000 -u admin -p password --hide-creds -i
+```
+
+This replaces usernames with `[REDACTED]` in the `C` (CLI Commands) output. Passwords are always redacted.
+
 ### Rate Limiting
 
 Disabled by default. OpenBMC does not enforce a requests-per-second limit. Enable if the BMC starts pushing back:
@@ -117,8 +137,12 @@ Disabled by default. OpenBMC does not enforce a requests-per-second limit. Enabl
     	Crawl the Redfish API tree
   -data string
     	JSON payload for action
+  -hide-creds
+    	Redact credentials in CLI command output
   -i
     	Run in interactive mode
+  -k
+    	Skip TLS certificate verification (for self-signed certs)
   -output string
     	Output format: tree, json (default "tree")
   -p string

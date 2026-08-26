@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
@@ -23,6 +24,7 @@ type Client struct {
 	password string
 	token    string
 	useHTTP  bool
+	insecure bool
 	http     *http.Client
 }
 
@@ -54,7 +56,7 @@ func (rl *RateLimiter) Wait() {
 	rl.lastReq = time.Now()
 }
 
-func NewClient(target, username, password string) *Client {
+func NewClient(target, username, password string, insecure bool) *Client {
 	transport := &http.Transport{
 		MaxIdleConns:        10,
 		MaxIdleConnsPerHost: 10,
@@ -65,11 +67,13 @@ func NewClient(target, username, password string) *Client {
 		}).DialContext,
 		TLSHandshakeTimeout:   5 * time.Second,
 		ResponseHeaderTimeout: 10 * time.Second,
+		TLSClientConfig:       &tls.Config{InsecureSkipVerify: insecure},
 	}
 	return &Client{
 		target:   target,
 		username: username,
 		password: password,
+		insecure: insecure,
 		http:     &http.Client{Transport: transport},
 	}
 }
@@ -553,6 +557,7 @@ type InteractiveSession struct {
 	history     []string
 	visited     map[string]bool
 	cached      map[string]*ResourceNode
+	hideCreds   bool
 }
 
 type MenuOption struct {
@@ -573,13 +578,14 @@ type ActionParam struct {
 	Input    string
 }
 
-func NewInteractiveSession(client *Client, rl *RateLimiter) *InteractiveSession {
+func NewInteractiveSession(client *Client, rl *RateLimiter, hideCreds bool) *InteractiveSession {
 	return &InteractiveSession{
 		client:      client,
 		rateLimiter: rl,
 		history:     make([]string, 0),
 		visited:     make(map[string]bool),
 		cached:      make(map[string]*ResourceNode),
+		hideCreds:   hideCreds,
 	}
 }
 
@@ -1285,10 +1291,17 @@ func generateCLICommand(session *InteractiveSession, path string, action string,
 	cmd.WriteString("onefish")
 	cmd.WriteString(fmt.Sprintf(" -target %s", session.client.target))
 	if session.client.username != "" {
-		cmd.WriteString(fmt.Sprintf(" -u %s", session.client.username))
+		if session.hideCreds {
+			cmd.WriteString(" -u [REDACTED]")
+		} else {
+			cmd.WriteString(fmt.Sprintf(" -u %s", session.client.username))
+		}
 	}
 	if session.client.password != "" {
 		cmd.WriteString(" -p [REDACTED]")
+	}
+	if session.client.insecure {
+		cmd.WriteString(" -k")
 	}
 	if path != "" && path != "/redfish/v1/" {
 		cmd.WriteString(fmt.Sprintf(" %s", path))
@@ -1404,15 +1417,17 @@ func main() {
 	interactive := flag.Bool("i", false, "Run in interactive mode")
 	action := flag.String("action", "", "Execute action (path)")
 	data := flag.String("data", "", "JSON payload for action")
+	insecure := flag.Bool("k", false, "Skip TLS certificate verification (for self-signed certs)")
+	hideCreds := flag.Bool("hide-creds", false, "Redact credentials in CLI command output")
 
 	flag.Parse()
 
 	if *target == "" {
-		fmt.Println("Usage: onefish -target <ip:port> [-u <username> -p <password>] [-i] [--crawl]")
+		fmt.Println("Usage: onefish -target <ip:port> [-u <username> -p <password>] [-i] [--crawl] [-k]")
 		return
 	}
 
-	client := NewClient(*target, *username, *password)
+	client := NewClient(*target, *username, *password, *insecure)
 
 	if err := client.Authenticate(); err != nil {
 		fmt.Printf("Authentication failed: %v\n", err)
@@ -1466,7 +1481,7 @@ func main() {
 			fmt.Println(string(output))
 		}
 	} else if *interactive {
-		session := NewInteractiveSession(client, rl)
+		session := NewInteractiveSession(client, rl, *hideCreds)
 		session.history = append(session.history, "/redfish/v1/")
 		runInteractiveMode(session)
 	} else {
